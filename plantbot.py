@@ -27,7 +27,7 @@ def get_vectorstore():
 def load_llm_openrouter():
     return ChatOpenAI(
     openai_api_base="https://openrouter.ai/api/v1",
-    openai_api_key="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",
+    openai_api_key=st.secrets["openrouter"]["api_key"],
     default_headers={
         "HTTP-Referer": "http://localhost",  # Replace with your real domain if deployed
         "User-Agent": "LangChain-App"
