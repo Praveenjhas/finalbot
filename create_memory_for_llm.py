@@ -1,45 +1,89 @@
-# build_vectorstore.py
 import os
-import shutil
-from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_huggingface.embeddings import HuggingFaceEmbeddings  # New
+import streamlit as st
 from langchain_community.vectorstores import FAISS
-
-# Paths
-DATA_PATH = "data"
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.chat_models import ChatOpenAI
+from langchain.prompts import PromptTemplate
+from langchain.chains import LLMChain, HypotheticalDocumentEmbedder, ConversationalRetrievalChain
+from langchain.memory import ConversationBufferWindowMemory
+# ✅ Paths
 DB_FAISS_PATH = "vectorstore/db_faiss"
 
-# Step 0: Remove existing vector store if it exists
-if os.path.exists(DB_FAISS_PATH):
-    print("🧹 Removing old vector store...")
-    shutil.rmtree(DB_FAISS_PATH)
+# ✅ Memory (last exchange only)
+memory = ConversationBufferWindowMemory(
+    memory_key="chat_history",
+    k=1,
+    return_messages=True,
+    output_key="answer"
+)
 
-# Step 1: Load all PDFs
-def load_pdf_files(data_path):
-    print("📄 Loading PDF documents...")
-    loader = DirectoryLoader(data_path, glob='*.pdf', loader_cls=PyPDFLoader)
-    return loader.load()
+# ✅ LLM setup (OpenRouter API with Mistral-7B)
+# Use st.secrets to securely load the API key
+llm = ChatOpenAI(
+    openai_api_base="https://openrouter.ai/api/v1",
+    openai_api_key=st.secrets["openrouter"]["api_key"],
+    model="mistralai/mistral-7b-instruct",
+    temperature=0.7,
+    max_tokens=1024,
+    streaming=True,
+)
 
-documents = load_pdf_files(DATA_PATH)
+# ✅ Prompt template for HyDE
+prompt_template = PromptTemplate(
+    input_variables=["question"],
+    template="Please write a detailed answer to the following question:\n\n{question}"
+)
 
-# Step 2: Split documents into chunks
-def create_chunks(docs):
-    print("🔪 Splitting documents into chunks...")
-    splitter = RecursiveCharacterTextSplitter(chunk_size=512, chunk_overlap=50)
-    return splitter.split_documents(docs)
+# ✅ LLMChain for HyDE
+llm_chain = LLMChain(llm=llm, prompt=prompt_template)
 
-text_chunks = create_chunks(documents)
+# ✅ Embedding model
+embedding_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
-# Step 3: Load embedding model
-def get_embedding_model():
-    print("🤖 Loading embedding model...")
-    return HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+# ✅ HyDE wrapper around base embeddings
+hyde_embeddings = HypotheticalDocumentEmbedder(
+    llm_chain=llm_chain,
+    base_embeddings=embedding_model
+)
 
-embedding_model = get_embedding_model()
+# ✅ Load FAISS vector store
+vectorstore = FAISS.load_local(
+    DB_FAISS_PATH,
+    embeddings=embedding_model,
+    allow_dangerous_deserialization=True
+)
 
-# Step 4: Create and save new FAISS vector store
-print("📦 Creating FAISS vector store...")
-db = FAISS.from_documents(text_chunks, embedding_model)
-db.save_local(DB_FAISS_PATH)
-print(f"✅ FAISS vector store built and saved at: {DB_FAISS_PATH}")
+# ✅ Retriever with HyDE
+retriever = vectorstore.as_retriever(embedding=hyde_embeddings)
+
+# ✅ QA Chain with memory and source documents
+qa_chain = ConversationalRetrievalChain.from_llm(
+    llm=llm,
+    retriever=retriever,
+    memory=memory,
+    return_source_documents=True,
+    output_key="answer"
+)
+
+# ✅ Start chat loop
+print("\n🤖 Chatbot is ready. Ask your questions!\n(Type 'exit' to stop)\n")
+
+try:
+    while True:
+        user_query = input("🧑 You: ")
+        if user_query.lower() in ["exit", "quit"]:
+            print("👋 Exiting. See you next time!")
+            break
+
+        response = qa_chain.invoke({"question": user_query})
+
+        print("\n🤖 Bot:")
+        print(response["answer"])
+
+        print("\n📚 Sources:")
+        for doc in response["source_documents"]:
+            print("-", doc.metadata.get("source", "Unknown"))
+        print("\n" + "-"*60 + "\n")
+
+except KeyboardInterrupt:
+    print("\n👋 Exiting due to keyboard interrupt.")

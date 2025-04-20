@@ -1,4 +1,9 @@
+import asyncio
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning)  # Suppress coroutine warning
 import os
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+os.environ["TORCH_HOME"] = os.path.join(os.getcwd(), "torch_cache")
 import io
 import re
 import json
@@ -12,17 +17,31 @@ from langchain.chains import RetrievalQA
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_core.prompts import PromptTemplate
-from langchain_community.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
 
 # ---- Set Your API Key Here ----
 
 DB_FAISS_PATH = "vectorstore/db_faiss"
 
-@st.cache_resource
+# Then modify your get_vectorstore() function:
+@st.cache_resource(show_spinner=False)
 def get_vectorstore():
-    embedding_model = HuggingFaceEmbeddings(model_name='sentence-transformers/all-MiniLM-L6-v2')
-    db = FAISS.load_local(DB_FAISS_PATH, embedding_model, allow_dangerous_deserialization=True)
-    return db
+    try:
+        # Explicitly clear cache before loading
+        if hasattr(get_vectorstore, 'clear'):
+            get_vectorstore.clear()
+            
+        embedding_model = HuggingFaceEmbeddings(
+            model_name='sentence-transformers/all-MiniLM-L6-v2'
+        )
+        return FAISS.load_local(
+            DB_FAISS_PATH,
+            embedding_model,
+            allow_dangerous_deserialization=True
+        )
+    except Exception as e:
+        st.error(f"Vector store loading failed: {e}")
+        st.stop()
 
 def load_llm_openrouter():
     return ChatOpenAI(
