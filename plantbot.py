@@ -1,3 +1,4 @@
+st.cache_resource.clear() 
 import asyncio
 import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning)  # Suppress coroutine warning
@@ -9,6 +10,8 @@ import re
 import json
 import time
 import uuid
+from pathlib import Path
+import shutil
 import streamlit as st
 from gtts import gTTS
 from datetime import datetime
@@ -26,22 +29,36 @@ DB_FAISS_PATH = "vectorstore/db_faiss"
 # Then modify your get_vectorstore() function:
 @st.cache_resource(show_spinner=False)
 def get_vectorstore():
-    try:
-        # Explicitly clear cache before loading
-        if hasattr(get_vectorstore, 'clear'):
-            get_vectorstore.clear()
-            
+    # 1. Check if vectorstore exists
+    if not os.path.exists(DB_FAISS_PATH):
+        raise FileNotFoundError(f"Vectorstore path {DB_FAISS_PATH} not found")
+    
+    # 2. Get latest modified times
+    data_mtime = max(os.path.getmtime(f) for f in Path("data").glob("*.pdf"))
+    vs_mtime = os.path.getmtime(DB_FAISS_PATH)
+    
+    # 3. Rebuild if PDFs are newer than vectorstore
+    if data_mtime > vs_mtime:
+        st.warning("New PDFs detected - rebuilding vectorstore...")
+        from langchain.document_loaders import DirectoryLoader
+        loader = DirectoryLoader("data", glob="*.pdf")
+        docs = loader.load()
+        
         embedding_model = HuggingFaceEmbeddings(
             model_name='sentence-transformers/all-MiniLM-L6-v2'
         )
-        return FAISS.load_local(
-            DB_FAISS_PATH,
-            embedding_model,
-            allow_dangerous_deserialization=True
-        )
-    except Exception as e:
-        st.error(f"Vector store loading failed: {e}")
-        st.stop()
+        
+        # Create fresh vectorstore
+        vectorstore = FAISS.from_documents(docs, embedding_model)
+        vectorstore.save_local(DB_FAISS_PATH)
+        st.success("Vectorstore updated!")
+    
+    # Load existing store
+    return FAISS.load_local(
+        DB_FAISS_PATH,
+        HuggingFaceEmbeddings(model_name='sentence-transformers/all-MiniLM-L6-v2'),
+        allow_dangerous_deserialization=True
+    )
 
 def load_llm_openrouter():
     return ChatOpenAI(
