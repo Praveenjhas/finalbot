@@ -19,8 +19,7 @@ from langchain.chains import RetrievalQA
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_core.prompts import PromptTemplate
-from langchain_openai import ChatOpenAI
-st.cache_resource.clear() 
+from langchain_openai import ChatOpenAI 
 # ---- Set Your API Key Here ----
 
 DB_FAISS_PATH = "vectorstore/db_faiss"
@@ -107,6 +106,7 @@ def highlight_keywords(text):
 
 # ----------------- MAIN APP -----------------
 def main():
+    st.cache_resource.clear()
     st.set_page_config(page_title="Strawberry Chatbot 🍓", layout="centered")
     st.markdown(custom_css, unsafe_allow_html=True)
     st.title("🍓 Strawberry Chatbot – Ask Your Questions!")
