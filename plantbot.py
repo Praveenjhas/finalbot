@@ -1,4 +1,3 @@
-st.cache_resource.clear() 
 import asyncio
 import warnings
 warnings.filterwarnings("ignore", category=RuntimeWarning)  # Suppress coroutine warning
@@ -21,7 +20,7 @@ from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
-
+st.cache_resource.clear() 
 # ---- Set Your API Key Here ----
 
 DB_FAISS_PATH = "vectorstore/db_faiss"
