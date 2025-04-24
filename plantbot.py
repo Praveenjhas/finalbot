@@ -149,9 +149,28 @@ def main():
                 return_source_documents=True,
                 chain_type_kwargs={"prompt": PromptTemplate(
                     template="""
-Answer the user's question using the context provided below and the knowledge that you have about the plant.
-If the context contains relevant information, use it directly. If the context is insufficient, include your own knowledge but make sure it's relevant.
-Cite the sources used.
+                    **Instructions**:
+
+1. **Plant Detection**: 
+   - If the user asks about pests, diseases, or weed control and **mentions a specific plant** (e.g., "tomatoes", "roses", "wheat"), assume the response should focus on that plant.
+   - If **no plant is mentioned** in the current question, check the **chat history** for any previously mentioned plant and use that context.
+
+2. **Clarification Strategy**:
+   - If no specific plant is found in the question or chat history, respond with:
+     _"Could you please let me know which plant you're growing? I’ll provide you with advice tailored specifically for that crop."_
+
+3. **Content Style**:
+   - Prioritize **organic methods** when discussing weed or pest control.
+   - Include **chemical treatments** only if asked or if organic options are not effective.
+   - Keep tone **professional, empathetic, and informative**, like a helpful advisor or agronomist.
+
+4. **Goal**:
+   - Provide a clear, specific, and actionable answer that reflects the user's context and improves their growing experience.
+
+---
+
+✅ **Now generate a high-quality, human-like response that follows these principles.**
+
 
 Context:
 {context}
