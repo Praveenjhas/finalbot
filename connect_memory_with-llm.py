@@ -7,25 +7,10 @@ import pytesseract
 from langchain.schema import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
+from langchain_community.embeddings import HuggingFaceEmbeddings
 
-# IMPORT SOLUTION - Try both possible import locations
-try:
-    # New recommended import location
-    from langchain.embeddings import HuggingFaceEmbeddings
-except ImportError:
-    try:
-        # Fallback to community version
-        from langchain_community.embeddings import HuggingFaceEmbeddings
-    except ImportError:
-        # Final fallback - install required package
-        import subprocess
-        import sys
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "langchain-community"])
-        from langchain_community.embeddings import HuggingFaceEmbeddings
-
-# Configure Tesseract path (update if needed)
+# Configure Tesseract path
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-
 def load_pdf_files(data_path):
     print("📄 Loading PDF documents...")
     documents = []
@@ -50,16 +35,20 @@ def load_pdf_files(data_path):
                                 img_bytes = pix.tobytes("png")
                                 img = Image.open(io.BytesIO(img_bytes))
                                 page_text = pytesseract.image_to_string(img, lang='eng+hin')
-                                
                             text += f"\n[Page {page_num}]\n{page_text}\n"
                         except Exception as page_error:
                             print(f"   ❌ Page {page_num} error: {str(page_error)}")
                             continue
                     
                     if text.strip():
+                        plant_name = os.path.splitext(filename)[0].lower()
                         documents.append(Document(
                             page_content=text,
-                            metadata={"source": filename}
+                            metadata={
+                                "source": filename, 
+                                "plant": plant_name,
+                                "title": plant_name.capitalize()
+                            }
                         ))
                     else:
                         print(f"⚠️ Skipped empty PDF: {filename}")
@@ -68,6 +57,23 @@ def load_pdf_files(data_path):
                 print(f"❌ Failed to process {filename}: {str(e)}")
                 
     return documents
+def create_vector_store(documents, db_path):
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=500,
+        chunk_overlap=100,
+        separators=["\n\n", "\n", "•", ":", "(?<=\d\))", "(?<=\.)", " "]
+    )
+    chunks = splitter.split_documents(documents)
+    
+    embedding_model = HuggingFaceEmbeddings(
+        model_name="sentence-transformers/all-MiniLM-L12-v2",
+        model_kwargs={'device': 'cpu'}
+    )
+
+    db = FAISS.from_documents(chunks, embedding_model)
+    db.save_local(db_path)
+    print(f"✅ Vector store created with {len(chunks)} chunks")
+    return db
 
 def main():
     DATA_PATH = "data"
@@ -80,21 +86,7 @@ def main():
     if not documents:
         raise ValueError("No valid documents found")
     
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=512,
-        chunk_overlap=50
-    )
-    chunks = splitter.split_documents(documents)
-    
-    # Initialize embeddings - this will now work
-    embedding_model = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2",
-        model_kwargs={'device': 'cpu'}
-    )
-    
-    db = FAISS.from_documents(chunks, embedding_model)
-    db.save_local(DB_FAISS_PATH)
-    print(f"✅ Vector store created with {len(chunks)} chunks")
+    create_vector_store(documents, DB_FAISS_PATH)
 
 if __name__ == "__main__":
     main()
